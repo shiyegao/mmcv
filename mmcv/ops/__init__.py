@@ -17,7 +17,7 @@ from .focal_loss import (SigmoidFocalLoss, SoftmaxFocalLoss,
 from .fused_bias_leakyrelu import FusedBiasLeakyReLU, fused_bias_leakyrelu
 from .info import (get_compiler_version, get_compiling_cuda_version,
                    get_onnxruntime_op_path)
-from .involution import Involution2d
+from .involution.involution import Involution2d
 from .masked_conv import MaskedConv2d, masked_conv2d
 from .modulated_deform_conv import (ModulatedDeformConv2d,
                                     ModulatedDeformConv2dPack,
