@@ -17,6 +17,7 @@ from .focal_loss import (SigmoidFocalLoss, SoftmaxFocalLoss,
 from .fused_bias_leakyrelu import FusedBiasLeakyReLU, fused_bias_leakyrelu
 from .info import (get_compiler_version, get_compiling_cuda_version,
                    get_onnxruntime_op_path)
+from .involution import Involution2d
 from .masked_conv import MaskedConv2d, masked_conv2d
 from .modulated_deform_conv import (ModulatedDeformConv2d,
                                     ModulatedDeformConv2dPack,
@@ -42,7 +43,7 @@ __all__ = [
     'ModulatedDeformRoIPoolPack', 'deform_roi_pool', 'SigmoidFocalLoss',
     'SoftmaxFocalLoss', 'sigmoid_focal_loss', 'softmax_focal_loss',
     'get_compiler_version', 'get_compiling_cuda_version',
-    'get_onnxruntime_op_path', 'MaskedConv2d', 'masked_conv2d',
+    'get_onnxruntime_op_path', 'Involution2d', 'MaskedConv2d', 'masked_conv2d',
     'ModulatedDeformConv2d', 'ModulatedDeformConv2dPack',
     'modulated_deform_conv2d', 'batched_nms', 'nms', 'soft_nms', 'nms_match',
     'RoIAlign', 'roi_align', 'RoIPool', 'roi_pool', 'SyncBatchNorm', 'Conv2d',
