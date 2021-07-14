@@ -15,7 +15,7 @@ class TentOnlineHook(Hook):
         self.total = 0
 
     def after_train_epoch(self, runner):
-        print("Final Accuracy:", self.correct/self.total)
+        runner.logger.info("Final Accuracy:", self.correct/self.total)
 
 
     def accuracy(self, pred, target, topk=[1], thrs=None):
@@ -62,7 +62,7 @@ class TentOnlineHook(Hook):
             results = torch.tensor(runner.model(return_loss=False, **data))
 
         acc = self.accuracy(results, batch_gt_labels, topk=[1])[0][0].item()
-        print("Iter:[{}]   Accuracy:{}".format(runner._inner_iter, acc))
-        
+        runner.logger.info("Iter:[{}]   Accuracy:{}".format(runner._inner_iter, acc))
+
         self.correct += acc * batch_size
         self.total += batch_size
