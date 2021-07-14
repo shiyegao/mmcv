@@ -55,7 +55,7 @@ class Conv2d(nn.Conv2d):
             else:
                 return empty
 
-        return super().forward(x)
+        return super().forward(x.float())
 
 
 @CONV_LAYERS.register_module('Conv3d', force=True)

@@ -66,6 +66,7 @@ def bbox_overlaps(bboxes1, bboxes2, mode='iou', aligned=False, offset=0):
         ious = bboxes1.new_zeros(rows)
     else:
         ious = bboxes1.new_zeros((rows, cols))
+    print(12121212)
     ext_module.bbox_overlaps(
         bboxes1, bboxes2, ious, mode=mode_flag, aligned=aligned, offset=offset)
     return ious

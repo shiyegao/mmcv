@@ -17,8 +17,8 @@ from .focal_loss import (SigmoidFocalLoss, SoftmaxFocalLoss,
 from .fused_bias_leakyrelu import FusedBiasLeakyReLU, fused_bias_leakyrelu
 from .info import (get_compiler_version, get_compiling_cuda_version,
                    get_onnxruntime_op_path)
-from .involution2d import Involution2d
-# from .involution import involution
+# from .involution import Involution2d
+from .involution_cupy import involution
 from .masked_conv import MaskedConv2d, masked_conv2d
 from .modulated_deform_conv import (ModulatedDeformConv2d,
                                     ModulatedDeformConv2dPack,
@@ -33,6 +33,7 @@ from .roi_align import RoIAlign, roi_align
 from .roi_align_rotated import RoIAlignRotated, roi_align_rotated
 from .roi_pool import RoIPool, roi_pool
 from .saconv import SAConv2d
+from .softmax_entropy import softmax_entropy, SoftmaxEntropy
 from .sync_bn import SyncBatchNorm
 from .tin_shift import TINShift, tin_shift
 from .upfirdn2d import upfirdn2d
@@ -54,5 +55,6 @@ __all__ = [
     'SAConv2d', 'TINShift', 'tin_shift', 'box_iou_rotated', 'nms_rotated',
     'upfirdn2d', 'FusedBiasLeakyReLU', 'fused_bias_leakyrelu',
     'RoIAlignRotated', 'roi_align_rotated', 'pixel_group', 'contour_expand',
-    'MultiScaleDeformableAttention', 'BorderAlign', 'border_align'
+    'MultiScaleDeformableAttention', 'BorderAlign', 'border_align',
+    'softmax_entropy', 'SoftmaxEntropy'
 ]

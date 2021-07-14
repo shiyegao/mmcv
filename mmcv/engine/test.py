@@ -10,6 +10,33 @@ import torch.distributed as dist
 import mmcv
 from mmcv.runner import get_dist_info
 
+def single_gpu_tent(model, data_loader):
+    """Tent model with a single gpu.
+
+        This method tests model with a single gpu and displays test progress bar.
+
+        Args:
+            model (nn.Module): Model to be tested.
+            data_loader (nn.Dataloader): Pytorch data loader.
+
+        Returns:
+            list: The prediction results.
+    """
+    results = []
+    dataset = data_loader.dataset
+    prog_bar = mmcv.ProgressBar(len(dataset))
+    for data in data_loader:
+        result = model(return_loss=False, **data)
+        results.extend(result)
+
+        # Assume result has the same length of batch_size
+        # refer to https://github.com/open-mmlab/mmcv/issues/985
+        batch_size = len(result)
+        for _ in range(batch_size):
+            prog_bar.update()
+    return results
+
+
 
 def single_gpu_test(model, data_loader):
     """Test model with a single gpu.

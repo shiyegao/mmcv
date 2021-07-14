@@ -15,6 +15,7 @@ def build_conv_layer(cfg, *args, **kwargs):
         cfg (None or dict): The conv layer config, which should contain:
             - type (str): Layer type.
             - layer args: Args needed to instantiate an conv layer.
+            - requires_grad (bool, optional): Whether stop gradient updates.
         args (argument list): Arguments passed to the `__init__`
             method of the corresponding conv layer.
         kwargs (keyword arguments): Keyword arguments passed to the `__init__`
@@ -33,11 +34,16 @@ def build_conv_layer(cfg, *args, **kwargs):
         cfg_ = cfg.copy()
 
     layer_type = cfg_.pop('type')
+    requires_grad = cfg_.pop('requires_grad', True)
     if layer_type not in CONV_LAYERS:
         raise KeyError(f'Unrecognized norm type {layer_type}')
     else:
         conv_layer = CONV_LAYERS.get(layer_type)
 
     layer = conv_layer(*args, **kwargs, **cfg_)
+
+    for param in layer.parameters():
+        param.requires_grad = requires_grad
+
 
     return layer

@@ -1,287 +1,133 @@
-from torch.autograd import Function
+from typing import Optional, Tuple, Union
 import torch
-from torch.nn.modules.utils import _pair
-import torch.nn.functional as F
 import torch.nn as nn
+from torch.nn.modules.utils import _pair
+from torch import ops
+# from glob import glob
+# import os
 
-from collections import namedtuple
-import cupy
-from string import Template
+# _LIB_PATH = glob(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'ops', 'csrc', 'involution.*.so'))[0]
+# ops.load_library(_LIB_PATH)
 
-from ..cnn.bricks.conv_module import ConvModule
+from ..utils import ext_loader
 
-Stream = namedtuple('Stream', ['ptr'])
-
-
-def Dtype(t):
-    if isinstance(t, torch.cuda.FloatTensor):
-        return 'float'
-    elif isinstance(t, torch.cuda.DoubleTensor):
-        return 'double'
-
-
-@cupy._util.memoize(for_each_device=True)
-def load_kernel(kernel_name, code, **kwargs):
-    code = Template(code).substitute(**kwargs)
-    kernel_code = cupy.cuda.compile_with_cache(code)
-    return kernel_code.get_function(kernel_name)
-
-
-# https://github.com/d-li14/involution/issues/17
-# CUDA_NUM_THREADS = 1024 # V100
-CUDA_NUM_THREADS = 512 # 2080 Ti
-
-
-kernel_loop = '''
-#define CUDA_KERNEL_LOOP(i, n)                        \
-  for (int i = blockIdx.x * blockDim.x + threadIdx.x; \
-      i < (n);                                       \
-      i += blockDim.x * gridDim.x)
-'''
-
-
-def GET_BLOCKS(N):
-    return (N + CUDA_NUM_THREADS - 1) // CUDA_NUM_THREADS
-
-
-_involution_kernel = kernel_loop + '''
-extern "C"
-__global__ void involution_forward_kernel(
-const ${Dtype}* bottom_data, const ${Dtype}* weight_data, ${Dtype}* top_data) {
-  CUDA_KERNEL_LOOP(index, ${nthreads}) {
-    const int n = index / ${channels} / ${top_height} / ${top_width};
-    const int c = (index / ${top_height} / ${top_width}) % ${channels};
-    const int h = (index / ${top_width}) % ${top_height};
-    const int w = index % ${top_width};
-    const int g = c / (${channels} / ${groups});
-    ${Dtype} value = 0;
-    #pragma unroll
-    for (int kh = 0; kh < ${kernel_h}; ++kh) {
-      #pragma unroll
-      for (int kw = 0; kw < ${kernel_w}; ++kw) {
-        const int h_in = -${pad_h} + h * ${stride_h} + kh * ${dilation_h};
-        const int w_in = -${pad_w} + w * ${stride_w} + kw * ${dilation_w};
-        if ((h_in >= 0) && (h_in < ${bottom_height})
-          && (w_in >= 0) && (w_in < ${bottom_width})) {
-          const int offset = ((n * ${channels} + c) * ${bottom_height} + h_in)
-            * ${bottom_width} + w_in;
-          const int offset_weight = ((((n * ${groups} + g) * ${kernel_h} + kh) * ${kernel_w} + kw) * ${top_height} + h)
-            * ${top_width} + w;
-          value += weight_data[offset_weight] * bottom_data[offset];
-        }
-      }
-    }
-    top_data[index] = value;
-  }
-}
-'''
-
-
-_involution_kernel_backward_grad_input = kernel_loop + '''
-extern "C"
-__global__ void involution_backward_grad_input_kernel(
-    const ${Dtype}* const top_diff, const ${Dtype}* const weight_data, ${Dtype}* const bottom_diff) {
-  CUDA_KERNEL_LOOP(index, ${nthreads}) {
-    const int n = index / ${channels} / ${bottom_height} / ${bottom_width};
-    const int c = (index / ${bottom_height} / ${bottom_width}) % ${channels};
-    const int h = (index / ${bottom_width}) % ${bottom_height};
-    const int w = index % ${bottom_width};
-    const int g = c / (${channels} / ${groups});
-    ${Dtype} value = 0;
-    #pragma unroll
-    for (int kh = 0; kh < ${kernel_h}; ++kh) {
-      #pragma unroll
-      for (int kw = 0; kw < ${kernel_w}; ++kw) {
-        const int h_out_s = h + ${pad_h} - kh * ${dilation_h};
-        const int w_out_s = w + ${pad_w} - kw * ${dilation_w};
-        if (((h_out_s % ${stride_h}) == 0) && ((w_out_s % ${stride_w}) == 0)) {
-          const int h_out = h_out_s / ${stride_h};
-          const int w_out = w_out_s / ${stride_w};
-          if ((h_out >= 0) && (h_out < ${top_height})
-                && (w_out >= 0) && (w_out < ${top_width})) {
-            const int offset = ((n * ${channels} + c) * ${top_height} + h_out)
-                  * ${top_width} + w_out;
-            const int offset_weight = ((((n * ${groups} + g) * ${kernel_h} + kh) * ${kernel_w} + kw) * ${top_height} + h_out)
-                  * ${top_width} + w_out;
-            value += weight_data[offset_weight] * top_diff[offset];
-          }
-        }
-      }
-    }
-    bottom_diff[index] = value;
-  }
-}
-'''
-
-
-_involution_kernel_backward_grad_weight = kernel_loop + '''
-extern "C"
-__global__ void involution_backward_grad_weight_kernel(
-    const ${Dtype}* const top_diff, const ${Dtype}* const bottom_data, ${Dtype}* const buffer_data) {
-  CUDA_KERNEL_LOOP(index, ${nthreads}) {
-    const int h = (index / ${top_width}) % ${top_height};
-    const int w = index % ${top_width};
-    const int kh = (index / ${kernel_w} / ${top_height} / ${top_width})
-          % ${kernel_h};
-    const int kw = (index / ${top_height} / ${top_width}) % ${kernel_w};
-    const int h_in = -${pad_h} + h * ${stride_h} + kh * ${dilation_h};
-    const int w_in = -${pad_w} + w * ${stride_w} + kw * ${dilation_w};
-    if ((h_in >= 0) && (h_in < ${bottom_height})
-          && (w_in >= 0) && (w_in < ${bottom_width})) {
-      const int g = (index / ${kernel_h} / ${kernel_w} / ${top_height} / ${top_width}) % ${groups};
-      const int n = (index / ${groups} / ${kernel_h} / ${kernel_w} / ${top_height} / ${top_width}) % ${num};
-      ${Dtype} value = 0;
-      #pragma unroll
-      for (int c = g * (${channels} / ${groups}); c < (g + 1) * (${channels} / ${groups}); ++c) {
-        const int top_offset = ((n * ${channels} + c) * ${top_height} + h)
-              * ${top_width} + w;
-        const int bottom_offset = ((n * ${channels} + c) * ${bottom_height} + h_in)
-              * ${bottom_width} + w_in;
-        value += top_diff[top_offset] * bottom_data[bottom_offset];
-      }
-      buffer_data[index] = value;
-    } else {
-      buffer_data[index] = 0;
-    }
-  }
-}
-'''
-
-
-class _involution(Function):
-    @staticmethod
-    def forward(ctx, input, weight, stride, padding, dilation):
-        assert input.dim() == 4 and input.is_cuda
-        assert weight.dim() == 6 and weight.is_cuda
-        batch_size, channels, height, width = input.size()
-        kernel_h, kernel_w = weight.size()[2:4]
-        output_h = int((height + 2 * padding[0] - (dilation[0] * (kernel_h - 1) + 1)) / stride[0] + 1)
-        output_w = int((width + 2 * padding[1] - (dilation[1] * (kernel_w - 1) + 1)) / stride[1] + 1)
-
-        output = input.new(batch_size, channels, output_h, output_w)
-        n = output.numel()
-
-        with torch.cuda.device_of(input):
-            f = load_kernel('involution_forward_kernel', _involution_kernel, Dtype=Dtype(input), nthreads=n,
-                            num=batch_size, channels=channels, groups=weight.size()[1],
-                            bottom_height=height, bottom_width=width,
-                            top_height=output_h, top_width=output_w,
-                            kernel_h=kernel_h, kernel_w=kernel_w,
-                            stride_h=stride[0], stride_w=stride[1],
-                            dilation_h=dilation[0], dilation_w=dilation[1],
-                            pad_h=padding[0], pad_w=padding[1])
-            f(block=(CUDA_NUM_THREADS,1,1),
-              grid=(GET_BLOCKS(n),1,1),
-              args=[input.data_ptr(), weight.data_ptr(), output.data_ptr()],
-              stream=Stream(ptr=torch.cuda.current_stream().cuda_stream))
-
-        ctx.save_for_backward(input, weight)
-        ctx.stride, ctx.padding, ctx.dilation = stride, padding, dilation
-        return output
+ext_module = ext_loader.load_ext(
+    '_ext', ['involution.cuda.involution2d_forward'])
     
-    @staticmethod
-    def backward(ctx, grad_output):
-        assert grad_output.is_cuda and grad_output.is_contiguous()
-        input, weight = ctx.saved_tensors
-        stride, padding, dilation = ctx.stride, ctx.padding, ctx.dilation
+def _involution2d(
+        input: torch.Tensor,
+        weight: torch.Tensor,
+        kernel_size: Union[int, Tuple[int, int]] = 7,
+        stride: Union[int, Tuple[int, int]] = 1,
+        padding: Union[int, Tuple[int, int]] = 0,
+        dilation: Union[int, Tuple[int, int]] = 1,
+        groups: int = 1,
+        bias: torch.Tensor = None,
+    ) -> torch.Tensor:
+    kernel_size_ = _pair(kernel_size)
+    stride_ = _pair(stride)
+    padding_ = _pair(padding)
+    dilation_ = _pair(dilation)
 
-        batch_size, channels, height, width = input.size()
-        kernel_h, kernel_w = weight.size()[2:4]
-        output_h, output_w = grad_output.size()[2:]
+    output: torch.Tensor = ext_module.involution.involution2d(input, weight, kernel_size_, stride_, padding_, dilation_, groups)
 
-        grad_input, grad_weight = None, None
+    if bias is not None:
+        output += bias.view(1, -1, 1, 1)
 
-        opt = dict(Dtype=Dtype(grad_output),
-                   num=batch_size, channels=channels, groups=weight.size()[1],
-                   bottom_height=height, bottom_width=width,
-                   top_height=output_h, top_width=output_w,
-                   kernel_h=kernel_h, kernel_w=kernel_w,
-                   stride_h=stride[0], stride_w=stride[1],
-                   dilation_h=dilation[0], dilation_w=dilation[1],
-                   pad_h=padding[0], pad_w=padding[1])
+    return output
 
-        with torch.cuda.device_of(input):
-            if ctx.needs_input_grad[0]:
-                grad_input = input.new(input.size())
-
-                n = grad_input.numel()
-                opt['nthreads'] = n
-
-                f = load_kernel('involution_backward_grad_input_kernel',
-                                _involution_kernel_backward_grad_input, **opt)
-                f(block=(CUDA_NUM_THREADS,1,1),
-                  grid=(GET_BLOCKS(n),1,1),
-                  args=[grad_output.data_ptr(), weight.data_ptr(), grad_input.data_ptr()],
-                  stream=Stream(ptr=torch.cuda.current_stream().cuda_stream))
-
-            if ctx.needs_input_grad[1]:
-                grad_weight = weight.new(weight.size())
-
-                n = grad_weight.numel()
-                opt['nthreads'] = n
-
-                f = load_kernel('involution_backward_grad_weight_kernel',
-                                _involution_kernel_backward_grad_weight, **opt)
-                f(block=(CUDA_NUM_THREADS,1,1),
-                  grid=(GET_BLOCKS(n),1,1),
-                  args=[grad_output.data_ptr(), input.data_ptr(), grad_weight.data_ptr()],
-                  stream=Stream(ptr=torch.cuda.current_stream().cuda_stream))
-
-        return grad_input, grad_weight, None, None, None
- 
-
-def _involution_cuda(input, weight, bias=None, stride=1, padding=0, dilation=1):
-    """ involution kernel
-    """
-    assert input.size(0) == weight.size(0)
-    assert input.size(-2)//stride == weight.size(-2)
-    assert input.size(-1)//stride == weight.size(-1)
-    if input.is_cuda:
-        out = _involution.apply(input, weight, _pair(stride), _pair(padding), _pair(dilation))
-        if bias is not None:
-            out += bias.view(1,-1,1,1)
-    else:
-        raise NotImplementedError
-    return out
-
-
-class involution(nn.Module):
-
+class Involution2d(nn.Module):
     def __init__(self,
-                 channels,
-                 kernel_size,
-                 stride,
-                 conv_cfg=None,
-                 norm_cfg=dict(type='BN'),
-                 act_cfg=dict(type='ReLU')):
-        super(involution, self).__init__()
-        self.kernel_size = kernel_size
-        self.stride = stride
-        self.channels = channels
-        reduction_ratio = 4
-        self.group_channels = 16
-        self.groups = self.channels // self.group_channels
-        self.conv1 = ConvModule(
-            in_channels=channels,
-            out_channels=channels // reduction_ratio,
-            kernel_size=1,
-            conv_cfg=conv_cfg,
-            norm_cfg=norm_cfg,
-            act_cfg=act_cfg)
-        self.conv2 = ConvModule(
-            in_channels=channels // reduction_ratio,
-            out_channels=kernel_size**2 * self.groups,
-            kernel_size=1,
-            stride=1,
-            conv_cfg=conv_cfg,
-            norm_cfg=None,
-            act_cfg=None)
-        if stride > 1:
-            self.avgpool = nn.AvgPool2d(stride, stride)
+                 in_channels: int,
+                 out_channels: int,
+                 kernel_size: Union[int, Tuple[int, int]] = 7,
+                 stride: Union[int, Tuple[int, int]] = 1,
+                 padding: Union[int, Tuple[int, int]] = 3,
+                 dilation: Union[int, Tuple[int, int]] = 1,
+                 groups: int = 1,
+                 bias: bool = False,
+                 sigma_mapping: Optional[nn.Module] = None,
+                 reduce_ratio: int = 1,
+                 ) -> None:
+        """2D Involution: https://arxiv.org/pdf/2103.06255.pdf
+        Args:
+            in_channels (int): Number of input channels
+            out_channels (int): Number of output channels
+            kernel_size (Union[int, Tuple[int, int]], optional): Kernel size to be used. Defaults to 7.
+            stride (Union[int, Tuple[int, int]], optional): Stride factor to be utilized. Defaults to 1.
+            padding (Union[int, Tuple[int, int]], optional): Padding to be used in unfold operation. Defaults to 3.
+            dilation (Union[int, Tuple[int, int]], optional): Dilation in unfold to be employed. Defaults to 1.
+            groups (int, optional): Number of groups to be employed. Defaults to 1.
+            bias (bool, optional): If true bias is utilized in each convolution layer. Defaults to False.
+            sigma_mapping (Optional[nn.Module], optional): Non-linear mapping as introduced in the paper. If none BN + ReLU is utilized
+            reduce_ratio (int, optional): Reduce ration of involution channels. Defaults to 1.
+        """
+        super(Involution2d, self).__init__()
 
-    def forward(self, x):
-        weight = self.conv2(self.conv1(x if self.stride == 1 else self.avgpool(x)))
-        b, c, h, w = weight.shape
-        weight = weight.view(b, self.groups, self.kernel_size, self.kernel_size, h, w)
-        out = _involution_cuda(x, weight, stride=self.stride, padding=(self.kernel_size-1)//2)
-        return out
+        assert isinstance(in_channels, int) and in_channels > 0, \
+            '"in_channels" must be a positive integer.'
+        assert isinstance(out_channels, int) and out_channels > 0, \
+            '"out_channels" must be a positive integer.'
+        assert isinstance(kernel_size, (int, tuple)), \
+            '"kernel_size" must be an int or a tuple of ints.'
+        assert isinstance(stride, (int, tuple)), \
+            '"stride" must be an int or a tuple of ints.'
+        assert isinstance(padding, (int, tuple)), \
+            '"padding" must be an int or a tuple of ints.'
+        assert isinstance(dilation, (int, tuple)), \
+            '"dilation" must be an int or a tuple of ints.'
+        assert isinstance(groups, int) and groups > 0, \
+            '"groups" must be a positive integer.'
+        assert in_channels % groups == 0, '"in_channels" must be divisible by "groups".'
+        assert out_channels % groups == 0, '"out_channels" must be divisible by "groups".'
+        assert isinstance(bias, bool), '"bias" must be a bool.'
+        assert isinstance(sigma_mapping, nn.Module) or sigma_mapping is None, \
+            '"sigma_mapping" muse be an int or a tuple of ints.'
+        assert isinstance(reduce_ratio, int) and reduce_ratio > 0, \
+            '"reduce_ratio" must be a positive integer.'
+
+        self.in_channels: int = in_channels
+        self.out_channels: int = out_channels
+        self.kernel_size: Tuple[int, int] = _pair(kernel_size)
+        self.stride: Tuple[int, int] = _pair(stride)
+        self.padding: Tuple[int, int] = _pair(padding)
+        self.dilation: Tuple[int, int] = _pair(dilation)
+        self.groups: int = groups
+        self.bias: bool = bias
+        self.reduce_ratio: int = reduce_ratio
+
+        self.sigma_mapping = sigma_mapping if isinstance(sigma_mapping, nn.Module) else nn.Sequential(
+            nn.BatchNorm2d(num_features=self.out_channels //
+                           self.reduce_ratio, momentum=0.3),
+            nn.ReLU()
+        )
+        self.initial_mapping = nn.Conv2d(in_channels=self.in_channels, out_channels=self.out_channels, kernel_size=1, bias=bias) \
+            if self.in_channels != self.out_channels else nn.Identity()
+        self.o_mapping = nn.AvgPool2d(
+            kernel_size=self.stride) if self.stride[0] > 1 or self.stride[1] > 1 else nn.Identity()
+        self.reduce_mapping = nn.Conv2d(
+            in_channels=self.in_channels, out_channels=self.out_channels // self.reduce_ratio, kernel_size=1, bias=bias)
+        self.span_mapping = nn.Conv2d(in_channels=self.out_channels // self.reduce_ratio,
+                                      out_channels=self.kernel_size[0] * self.kernel_size[1] * self.groups, kernel_size=1, bias=bias)
+
+    def __repr__(self) -> str:
+        """Method returns information about the module
+        Returns:
+            str: Info string
+        """
+        return (f'{self.__class__.__name__}({self.in_channels}, {self.out_channels}, kernel_size=({self.kernel_size[0]}, {self.kernel_size[1]}), '
+            f'stride=({self.stride[0]}, {self.stride[1]}), padding=({self.padding[0]}, {self.padding[1]}), dilation=({self.dilation[0], self.dilation[1]}), '
+            f'groups={self.groups}, bias={self.bias}, reduce_ratio={self.reduce_ratio}, sigma_mapping={str(self.sigma_mapping)}'
+        )
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Forward pass
+        Args:
+            input (torch.Tensor): Input tensor of the shape [batch size, in channels, height, width]
+        Returns:
+            torch.Tensor: Output tensor of the shape [batch size, out channels, height, width] (w/ same padding)
+        """
+        weight: torch.Tensor = self.span_mapping(self.sigma_mapping(self.reduce_mapping(self.o_mapping(input))))
+        input_init: torch.Tensor = self.initial_mapping(input)
+
+        return _involution2d(input_init, weight, kernel_size=self.kernel_size, stride=self.stride, padding=self.padding, dilation=self.dilation, groups=self.groups)

@@ -82,6 +82,7 @@ class EvalHook(Hook):
                  test_fn=None,
                  greater_keys=None,
                  less_keys=None,
+                 tent=True,
                  **eval_kwargs):
         if not isinstance(dataloader, DataLoader):
             raise TypeError(f'dataloader must be a pytorch DataLoader, '
@@ -110,8 +111,12 @@ class EvalHook(Hook):
         self.initial_flag = True
 
         if test_fn is None:
-            from mmcv.engine import single_gpu_test
-            self.test_fn = single_gpu_test
+            if tent:
+                from mmcv.engine import single_gpu_tent
+                self.test_fn = single_gpu_tent
+            else:
+                from mmcv.engine import single_gpu_test
+                self.test_fn = single_gpu_test
         else:
             self.test_fn = test_fn
 
