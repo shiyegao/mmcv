@@ -15,7 +15,7 @@ class TentOnlineHook(Hook):
         self.total = 0
 
     def after_train_epoch(self, runner):
-        runner.logger.info("Final Accuracy:", self.correct/self.total)
+        runner.logger.info("Final Accuracy: {}".format(self.correct/self.total))
 
 
     def accuracy(self, pred, target, topk=[1], thrs=None):
