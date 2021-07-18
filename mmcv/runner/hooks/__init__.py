@@ -15,7 +15,6 @@ from .optimizer import Fp16OptimizerHook, OptimizerHook
 from .profiler import ProfilerHook
 from .sampler_seed import DistSamplerSeedHook
 from .sync_buffer import SyncBuffersHook
-from .tent import TentOnlineHook
 __all__ = [
     'HOOKS', 'Hook', 'CheckpointHook', 'ClosureHook', 'LrUpdaterHook',
     'OptimizerHook', 'Fp16OptimizerHook', 'IterTimerHook',
@@ -23,6 +22,5 @@ __all__ = [
     'PaviLoggerHook', 'TextLoggerHook', 'TensorboardLoggerHook',
     'NeptuneLoggerHook', 'WandbLoggerHook', 'DvcliveLoggerHook',
     'MomentumUpdaterHook', 'SyncBuffersHook', 'EMAHook', 'EvalHook',
-    'DistEvalHook', 'ProfilerHook',
-    'TentOnlineHook'
+    'DistEvalHook', 'ProfilerHook'
 ]

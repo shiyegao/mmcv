@@ -13,7 +13,7 @@ from .hooks import (HOOKS, CheckpointHook, ClosureHook, DistEvalHook,
                     DistSamplerSeedHook, DvcliveLoggerHook, EMAHook, EvalHook,
                     Fp16OptimizerHook, Hook, IterTimerHook, LoggerHook,
                     LrUpdaterHook, MlflowLoggerHook, NeptuneLoggerHook,
-                    OptimizerHook, PaviLoggerHook, SyncBuffersHook, TentOnlineHook,
+                    OptimizerHook, PaviLoggerHook, SyncBuffersHook,
                     TensorboardLoggerHook, TextLoggerHook, WandbLoggerHook)
 from .iter_based_runner import IterBasedRunner, IterLoader
 from .log_buffer import LogBuffer
@@ -39,5 +39,5 @@ __all__ = [
     'SyncBuffersHook', 'EMAHook', 'build_runner', 'RUNNERS', 'allreduce_grads',
     'allreduce_params', 'LossScaler', 'CheckpointLoader', 'BaseModule',
     '_load_checkpoint_with_prefix', 'EvalHook', 'DistEvalHook', 'Sequential',
-    'ModuleList', 'TentOnlineHook'
+    'ModuleList'
 ]
