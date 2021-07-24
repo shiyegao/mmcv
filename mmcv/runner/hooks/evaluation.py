@@ -316,6 +316,11 @@ class EvalHook(Hook):
             results, logger=runner.logger, **self.eval_kwargs)
         for name, val in eval_res.items():
             runner.log_buffer.output[name] = val
+            try: 
+                import wandb
+                wandb.log({'Offline Accuracy/' + name:val})
+            except:
+                pass
         runner.log_buffer.ready = True
 
         if self.save_best is not None:
