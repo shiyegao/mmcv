@@ -318,7 +318,9 @@ class EvalHook(Hook):
             runner.log_buffer.output[name] = val
             try: 
                 import wandb
-                wandb.log({'Offline Accuracy/' + name:val})
+                corruption = runner.data_loader.dataset.corruption
+                severity = runner.data_loader.dataset.severity
+                wandb.log({"{}/offline_".format(severity) + name:val})
             except:
                 pass
         runner.log_buffer.ready = True
