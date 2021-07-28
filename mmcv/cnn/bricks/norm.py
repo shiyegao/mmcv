@@ -1,3 +1,4 @@
+from copy import deepcopy
 import inspect
 import torch
 import torch.nn as nn
@@ -83,6 +84,9 @@ class CurrentMeanVarBatchNorm2d(nn.Module):
         super()._load_from_state_dict(
             state_dict, prefix, local_metadata, False, #strict,
             missing_keys, unexpected_keys, error_msgs)
+        
+        self.register_buffer("ckpt_weight", self.weight)
+        self.register_buffer("ckpt_bias", self.bias)
 
 
     def forward(self, x):
@@ -130,10 +134,111 @@ class FreezedMeanVarBatchNorm2d(nn.Module):
             state_dict, prefix, local_metadata, False, #strict,
             missing_keys, unexpected_keys, error_msgs)
 
-        # self.running_mean = self.running_mean.to(model_device)
-        # self.running_var = self.running_var.to(model_device)
+        self.register_buffer("ckpt_weight", self.weight)
+        self.register_buffer("ckpt_bias", self.bias)
 
     def forward(self, x):
+        if self.weight.dim() == 1: # batch
+            scale = self.weight * (self.running_var + 1e-5).rsqrt()
+            bias = self.bias - self.running_mean * scale
+            scale = scale.reshape(1, -1, 1, 1)
+            bias = bias.reshape(1, -1, 1, 1)
+            return x * scale + bias
+        else: # sample
+            scale = self.weight * ((self.running_var + 1e-5).rsqrt()).reshape(1, -1)
+            bias = self.bias - self.running_mean.reshape(1, -1) * scale
+            scale = scale.unsqueeze(-1).unsqueeze(-1)
+            bias = bias.unsqueeze(-1).unsqueeze(-1)
+        return x * scale + bias
+
+
+class TargetCurrentMeanVarBatchNorm2d(nn.Module):
+    __constants__ = ['num_features']
+    def __init__(self, num_features, eps):
+        super().__init__()
+        assert eps==1e-5
+        self.num_features = num_features
+        self.weight = nn.Parameter(torch.ones(num_features))
+        self.bias = nn.Parameter(torch.zeros(num_features))
+        self.register_buffer("running_mean", torch.zeros(num_features))
+        self.register_buffer("running_var", torch.ones(num_features) - 1e-5)
+        self.register_buffer("current_mean", torch.zeros(num_features))
+        self.register_buffer("current_var", torch.ones(num_features) - 1e-5)
+        self.register_buffer("target_mean", torch.zeros(num_features))
+        self.register_buffer("target_var", torch.ones(num_features) - 1e-5)
+
+    def extra_repr(self):
+        return '{num_features}, eps=1e-5, affine=True'.format(**self.__dict__)
+
+
+    def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict,
+                              missing_keys, unexpected_keys, error_msgs):
+
+        model_device = self.weight.device
+        self.weight = nn.Parameter(torch.ones(self.num_features).to(model_device))
+        self.bias = nn.Parameter(torch.zeros(self.num_features).to(model_device))
+
+        super()._load_from_state_dict(
+            state_dict, prefix, local_metadata, False, #strict,
+            missing_keys, unexpected_keys, error_msgs)
+        
+        self.target_mean = deepcopy(self.running_mean)
+        self.target_var = deepcopy(self.running_var)
+
+
+    def forward(self, x):
+        self.current_mean = x.mean([0, 2, 3])
+        self.current_var = x.var([0, 2, 3], unbiased=False)
+        if self.weight.dim() == 1: # batch
+            scale = self.weight * (self.current_var + 1e-5).rsqrt()
+            bias = self.bias - self.current_mean * scale
+            scale = scale.reshape(1, -1, 1, 1)
+            bias = bias.reshape(1, -1, 1, 1)
+        else: # sample
+            scale = self.weight * ((self.current_var + 1e-5).rsqrt()).reshape(1, -1)
+            bias = self.bias - self.current_mean.reshape(1, -1) * scale
+            scale = scale.unsqueeze(-1).unsqueeze(-1)
+            bias = bias.unsqueeze(-1).unsqueeze(-1)
+        return x * scale + bias
+
+
+class TargetFreezedMeanVarBatchNorm2d(nn.Module):
+    __constants__ = ['num_features']
+    def __init__(self, num_features, eps):
+        super().__init__()
+        assert eps==1e-5
+        self.num_features = num_features
+        self.weight = nn.Parameter(torch.ones(num_features))
+        self.bias = nn.Parameter(torch.zeros(num_features))
+        self.register_buffer("running_mean", torch.zeros(num_features))
+        self.register_buffer("running_var", torch.ones(num_features) - 1e-5)
+        self.register_buffer("current_mean", torch.zeros(num_features))
+        self.register_buffer("current_var", torch.ones(num_features) - 1e-5)
+        self.register_buffer("target_mean", torch.zeros(num_features))
+        self.register_buffer("target_var", torch.ones(num_features) - 1e-5)
+
+    def extra_repr(self):
+        return '{num_features}, eps=1e-5, affine=True'.format(**self.__dict__)
+
+
+    def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict,
+                              missing_keys, unexpected_keys, error_msgs):
+
+        model_device = self.weight.device
+        self.weight = nn.Parameter(torch.ones(self.num_features).to(model_device))
+        self.bias = nn.Parameter(torch.zeros(self.num_features).to(model_device))
+
+        super()._load_from_state_dict(
+            state_dict, prefix, local_metadata, False, #strict,
+            missing_keys, unexpected_keys, error_msgs)
+
+        self.target_mean = deepcopy(self.running_mean)
+        self.target_var = deepcopy(self.running_var)
+
+    def forward(self, x):
+        self.current_mean = x.mean([0, 2, 3])
+        self.current_var = x.var([0, 2, 3], unbiased=False)
+
         if self.weight.dim() == 1: # batch
             scale = self.weight * (self.running_var + 1e-5).rsqrt()
             bias = self.bias - self.running_mean * scale

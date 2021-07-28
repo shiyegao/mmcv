@@ -82,7 +82,6 @@ class EvalHook(Hook):
                  test_fn=None,
                  greater_keys=None,
                  less_keys=None,
-                 tent=True,
                  **eval_kwargs):
         if not isinstance(dataloader, DataLoader):
             raise TypeError(f'dataloader must be a pytorch DataLoader, '
@@ -111,12 +110,8 @@ class EvalHook(Hook):
         self.initial_flag = True
 
         if test_fn is None:
-            if tent:
-                from mmcv.engine import single_gpu_tent
-                self.test_fn = single_gpu_tent
-            else:
-                from mmcv.engine import single_gpu_test
-                self.test_fn = single_gpu_test
+            from mmcv.engine import single_gpu_test
+            self.test_fn = single_gpu_test
         else:
             self.test_fn = test_fn
 
@@ -316,13 +311,14 @@ class EvalHook(Hook):
             results, logger=runner.logger, **self.eval_kwargs)
         for name, val in eval_res.items():
             runner.log_buffer.output[name] = val
-            try: 
-                import wandb
-                corruption = runner.data_loader.dataset.corruption
-                severity = runner.data_loader.dataset.severity
-                wandb.log({"{}/offline_".format(severity) + name:val})
-            except:
-                pass
+            if name[-1]=='1':
+                try: 
+                    import wandb
+                    corruption = runner.data_loader.dataset.corruption
+                    severity = runner.data_loader.dataset.severity
+                    wandb.log({"{}/offline_".format(severity) + name:val})
+                except:
+                    pass
         runner.log_buffer.ready = True
 
         if self.save_best is not None:

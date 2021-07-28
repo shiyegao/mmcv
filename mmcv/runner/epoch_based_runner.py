@@ -45,9 +45,9 @@ class EpochBasedRunner(BaseRunner):
         self.call_hook('before_train_epoch')
         time.sleep(2)  # Prevent possible deadlock during epoch transition
         for i, data_batch in enumerate(self.data_loader):
-            self.data_batch = data_batch
-            self.kwargs = kwargs
             self._inner_iter = i
+            self.data_batch = data_batch
+            self.runner_kwargs = kwargs
             self.call_hook('before_train_iter')
             self.run_iter(data_batch, train_mode=True, **kwargs)
             self.call_hook('after_train_iter')
@@ -65,6 +65,7 @@ class EpochBasedRunner(BaseRunner):
         time.sleep(2)  # Prevent possible deadlock during epoch transition
         for i, data_batch in enumerate(self.data_loader):
             self._inner_iter = i
+            self.data_batch = data_batch
             self.call_hook('before_val_iter')
             self.run_iter(data_batch, train_mode=False)
             self.call_hook('after_val_iter')
