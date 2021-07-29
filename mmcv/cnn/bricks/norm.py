@@ -78,6 +78,7 @@ class CurrentMeanVarBatchNorm2d(nn.Module):
                               missing_keys, unexpected_keys, error_msgs):
 
         model_device = self.weight.device
+        param_requires_grad = self.weight.requires_grad
         self.weight = nn.Parameter(torch.ones(self.num_features).to(model_device))
         self.bias = nn.Parameter(torch.zeros(self.num_features).to(model_device))
 
@@ -85,6 +86,8 @@ class CurrentMeanVarBatchNorm2d(nn.Module):
             state_dict, prefix, local_metadata, False, #strict,
             missing_keys, unexpected_keys, error_msgs)
         
+        self.weight.requires_grad = param_requires_grad
+        self.bias.requires_grad = param_requires_grad
         self.register_buffer("ckpt_weight", self.weight)
         self.register_buffer("ckpt_bias", self.bias)
 
@@ -127,6 +130,7 @@ class FreezedMeanVarBatchNorm2d(nn.Module):
                               missing_keys, unexpected_keys, error_msgs):
 
         model_device = self.weight.device
+        param_requires_grad = self.weight.requires_grad
         self.weight = nn.Parameter(torch.ones(self.num_features).to(model_device))
         self.bias = nn.Parameter(torch.zeros(self.num_features).to(model_device))
 
@@ -134,6 +138,8 @@ class FreezedMeanVarBatchNorm2d(nn.Module):
             state_dict, prefix, local_metadata, False, #strict,
             missing_keys, unexpected_keys, error_msgs)
 
+        self.weight.requires_grad = param_requires_grad
+        self.bias.requires_grad = param_requires_grad
         self.register_buffer("ckpt_weight", self.weight)
         self.register_buffer("ckpt_bias", self.bias)
 
