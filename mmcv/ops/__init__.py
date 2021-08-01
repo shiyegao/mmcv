@@ -33,7 +33,7 @@ from .roi_align import RoIAlign, roi_align
 from .roi_align_rotated import RoIAlignRotated, roi_align_rotated
 from .roi_pool import RoIPool, roi_pool
 from .saconv import SAConv2d
-from .softmax_entropy import softmax_entropy, SoftmaxEntropy
+from .softmax_entropy import softmax_entropy, SoftmaxEntropy, info_max, InfoMax
 from .sync_bn import SyncBatchNorm
 from .tin_shift import TINShift, tin_shift
 from .upfirdn2d import upfirdn2d
@@ -56,5 +56,5 @@ __all__ = [
     'upfirdn2d', 'FusedBiasLeakyReLU', 'fused_bias_leakyrelu',
     'RoIAlignRotated', 'roi_align_rotated', 'pixel_group', 'contour_expand',
     'MultiScaleDeformableAttention', 'BorderAlign', 'border_align',
-    'softmax_entropy', 'SoftmaxEntropy'
+    'softmax_entropy', 'SoftmaxEntropy',  'info_max', 'InfoMax'
 ]
