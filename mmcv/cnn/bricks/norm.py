@@ -58,11 +58,11 @@ class OnlineMeanVarBatchNorm2d(nn.Module):
 
 class CurrentMeanVarBatchNorm2d(nn.Module):
     __constants__ = ['num_features']
-    i=0
     def __init__(self, num_features, eps):
         # super().__init__(num_features)
         super().__init__()
         assert eps==1e-5
+        self.momentum = 0.9 
         self.num_features = num_features
         self.weight = nn.Parameter(torch.ones(num_features))
         self.bias = nn.Parameter(torch.zeros(num_features))
@@ -102,30 +102,12 @@ class CurrentMeanVarBatchNorm2d(nn.Module):
             scale = scale.reshape(1, -1, 1, 1)
             bias = bias.reshape(1, -1, 1, 1)
         else: # sample
-            scale = self.weight * ((current_var + 1e-5).rsqrt()).reshape(1, -1)
-            bias = self.bias - current_mean.reshape(1, -1) * scale
+            var = (1 - self.momentum) * self.running_var + self.momentum * current_var
+            mean = (1 - self.momentum) * self.running_mean + self.momentum * current_mean
+            scale = self.weight * ((var + 1e-5).rsqrt()).reshape(1, -1)
+            bias = self.bias - mean.reshape(1, -1) * scale
             scale = scale.unsqueeze(-1).unsqueeze(-1)
             bias = bias.unsqueeze(-1).unsqueeze(-1)
-        cnt = scale.size(0)
-        if self.i>0:
-            # from collections import Counter
-            # s, b = scale.squeeze(-1).squeeze(-1), bias.squeeze(-1).squeeze(-1)
-            # print(self.i, len(Counter([s[i] for i in range(s.size(0))]).keys()), 
-            #     len(Counter([b[i] for i in range(b.size(0))]).keys()))
-            # print(self.i, self.num_features, 'ohhhh', scale[0].equal(scale[77]), bias[1].equal(bias[45]))
-            # from collections import Counter
-            # s, b = scale.squeeze(-1).squeeze(-1), bias.squeeze(-1).squeeze(-1)
-            # print(self.i, len(Counter([s[i] for i in range(s.size(0))]).keys()), 
-                # len(Counter([b[i] for i in range(b.size(0))]).keys()))
-            for i in range(scale.size(0)):
-                if scale[i].equal(scale[0]) and bias[i].equal(bias[0]):
-                    cnt -= 1
-        if cnt==0:
-            print(self.i)
-            self.i += 1
-        else:
-            self.i += 1
-            self._s, self._b = scale.detach(), bias.detach()
         return x * scale + bias 
 
 
