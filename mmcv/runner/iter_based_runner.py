@@ -55,9 +55,9 @@ class IterBasedRunner(BaseRunner):
         self.mode = 'train'
         self.data_loader = data_loader
         self._epoch = data_loader.epoch
-        data_batch = next(data_loader)
+        self.data_batch = next(data_loader)
         self.call_hook('before_train_iter')
-        outputs = self.model.train_step(data_batch, self.optimizer, **kwargs)
+        outputs = self.model.train_step(self.data_batch, self.optimizer, **kwargs)
         if not isinstance(outputs, dict):
             raise TypeError('model.train_step() must return a dict')
         if 'log_vars' in outputs:
@@ -225,7 +225,8 @@ class IterBasedRunner(BaseRunner):
                                 optimizer_config=None,
                                 checkpoint_config=None,
                                 log_config=None,
-                                momentum_config=None):
+                                momentum_config=None,
+                                **kwargs):
         """Register default hooks for iter-based training.
 
         Default hooks include:
