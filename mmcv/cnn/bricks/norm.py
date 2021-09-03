@@ -59,20 +59,17 @@ class OnlineMeanVarBatchNorm2d(nn.Module):
 class CurrentMeanVarBatchNorm2d(nn.Module):
     __constants__ = ['num_features']
     def __init__(self, num_features, eps):
-        # super().__init__(num_features)
         super().__init__()
-        assert eps==1e-5
-        self.momentum = 0.9 
+        assert eps == 1e-5
         self.num_features = num_features
         self.weight = nn.Parameter(torch.ones(num_features))
         self.bias = nn.Parameter(torch.zeros(num_features))
         self.register_buffer("running_mean", torch.zeros(num_features))
         self.register_buffer("running_var", torch.ones(num_features) - 1e-5)
-        # self.running_mean = torch.zeros(num_features)
-        # self.running_var = torch.ones(num_features) - 1e-5
 
     def extra_repr(self):
-        return '{num_features}, eps=1e-5, affine=True'.format(**self.__dict__)
+        return '{}, eps=1e-5, affine=True, requires_grad={}'.format(
+            self.num_features, self.weight.requires_grad)
 
 
     def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict,
@@ -91,8 +88,7 @@ class CurrentMeanVarBatchNorm2d(nn.Module):
         self.bias.requires_grad = param_requires_grad
         self.register_buffer("ckpt_weight", self.weight)
         self.register_buffer("ckpt_bias", self.bias)
-
-
+        
     def forward(self, x):
         current_mean = x.mean([0, 2, 3])
         current_var = x.var([0, 2, 3], unbiased=False)
@@ -102,15 +98,13 @@ class CurrentMeanVarBatchNorm2d(nn.Module):
             scale = scale.reshape(1, -1, 1, 1)
             bias = bias.reshape(1, -1, 1, 1)
         else: # sample
-            var = (1 - self.momentum) * self.running_var + self.momentum * current_var
-            mean = (1 - self.momentum) * self.running_mean + self.momentum * current_mean
-            scale = self.weight * ((var + 1e-5).rsqrt()).reshape(1, -1)
-            bias = self.bias - mean.reshape(1, -1) * scale
+            scale = self.weight * ((current_var + 1e-5).rsqrt()).reshape(1, -1)
+            bias = self.bias - current_mean.reshape(1, -1) * scale
             scale = scale.unsqueeze(-1).unsqueeze(-1)
             bias = bias.unsqueeze(-1).unsqueeze(-1)
-        return x * scale + bias 
+        return x * scale + bias
 
-
+        
 class FreezedMeanVarBatchNorm2d(nn.Module):
     __constants__ = ['num_features']
     def __init__(self, num_features, eps):

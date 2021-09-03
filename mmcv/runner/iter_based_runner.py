@@ -56,6 +56,7 @@ class IterBasedRunner(BaseRunner):
         self.data_loader = data_loader
         self._epoch = data_loader.epoch
         self.data_batch = next(data_loader)
+        self.device = self.data_batch['img'].device
         self.call_hook('before_train_iter')
         outputs = self.model.train_step(self.data_batch, self.optimizer, **kwargs)
         if not isinstance(outputs, dict):
