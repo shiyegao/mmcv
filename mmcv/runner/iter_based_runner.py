@@ -41,6 +41,10 @@ class IterLoader:
 
     def __len__(self):
         return len(self._dataloader)
+    
+    @property
+    def data_loader(self):
+        return self._dataloader
 
 
 @RUNNERS.register_module()
@@ -116,7 +120,7 @@ class IterBasedRunner(BaseRunner):
         self.call_hook('before_run')
 
         iter_loaders = [IterLoader(x) for x in data_loaders]
-
+        self.data_loader = iter_loaders[0].data_loader
         self.call_hook('before_epoch')
 
         while self.iter < self._max_iters:
