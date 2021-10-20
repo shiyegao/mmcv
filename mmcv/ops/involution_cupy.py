@@ -1,7 +1,6 @@
 from torch.autograd import Function
 import torch
 from torch.nn.modules.utils import _pair
-import torch.nn.functional as F
 import torch.nn as nn
 
 from collections import namedtuple
@@ -20,7 +19,7 @@ def Dtype(t):
         return 'double'
 
 
-@cupy._util.memoize(for_each_device=True)
+@cupy.memoize(for_each_device=True)
 def load_kernel(kernel_name, code, **kwargs):
     code = Template(code).substitute(**kwargs)
     kernel_code = cupy.cuda.compile_with_cache(code)
@@ -29,7 +28,7 @@ def load_kernel(kernel_name, code, **kwargs):
 
 # https://github.com/d-li14/involution/issues/17
 # CUDA_NUM_THREADS = 1024 # V100
-CUDA_NUM_THREADS = 512 # 2080 Ti
+CUDA_NUM_THREADS = 512  # 2080 Ti
 
 
 kernel_loop = '''

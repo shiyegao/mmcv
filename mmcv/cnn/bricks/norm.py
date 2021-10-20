@@ -30,15 +30,13 @@ class OnlineMeanVarBatchNorm2d(nn.Module):
         self.register_buffer("running_mean", torch.zeros(num_features))
         self.register_buffer("running_var", torch.ones(num_features) - 1e-5)
 
-
     def extra_repr(self):
         return '{num_features}, eps=1e-5, momentum={momentum}, affine=True'.format(**self.__dict__)
-
 
     def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict,
                               missing_keys, unexpected_keys, error_msgs):
         super()._load_from_state_dict(
-            state_dict, prefix, local_metadata, False, #strict,
+            state_dict, prefix, local_metadata, False,  #strict,
             missing_keys, unexpected_keys, error_msgs)
 
 
@@ -46,8 +44,7 @@ class OnlineMeanVarBatchNorm2d(nn.Module):
         current_mean = x.mean([0, 2, 3])
         current_var = x.var([0, 2, 3], unbiased=False)
 
-        scale = self.weight * ((1 - self.momentum
-            ) * self.running_var + current_var * self.momentum + 1e-5).rsqrt()
+        scale = self.weight * ((1 - self.momentum) * self.running_var + current_var * self.momentum + 1e-5).rsqrt()
         bias = self.bias - ((1 - self.momentum
         ) * self.running_mean + current_mean * self.momentum) * scale
         scale = scale.reshape(1, -1, 1, 1)
@@ -58,6 +55,7 @@ class OnlineMeanVarBatchNorm2d(nn.Module):
 
 class CurrentMeanVarBatchNorm2d(nn.Module):
     __constants__ = ['num_features']
+    
     def __init__(self, num_features, eps):
         super().__init__()
         assert eps == 1e-5
