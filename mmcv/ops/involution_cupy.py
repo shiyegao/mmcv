@@ -7,7 +7,7 @@ from collections import namedtuple
 import cupy
 from string import Template
 
-from ..cnn.bricks.conv_module import ConvModule
+from mmcv.cnn import ConvModule
 
 Stream = namedtuple('Stream', ['ptr'])
 

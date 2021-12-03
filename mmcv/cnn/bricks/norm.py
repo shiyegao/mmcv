@@ -18,6 +18,28 @@ class ResetMeanVarBatchNorm2d(nn.BatchNorm2d):
         self.reset_running_stats()
 
 
+class SampleAwareStaticBatchNorm2d(nn.BatchNorm2d):
+
+    def forward(self, x):
+        scale = self.weight * ((self.running_var + self.eps).rsqrt()).reshape(1, -1)
+        bias = self.bias - self.running_mean.reshape(1, -1) * scale
+        scale = scale.unsqueeze(-1).unsqueeze(-1)
+        bias = bias.unsqueeze(-1).unsqueeze(-1)
+        return x * scale + bias
+
+
+class SampleAwareOnlineBatchNorm2d(nn.BatchNorm2d):
+
+    def forward(self, x):
+        current_mean = x.mean([0, 2, 3])
+        current_var = x.var([0, 2, 3], unbiased=False)
+        scale = self.weight * ((current_var + self.eps).rsqrt()).reshape(1, -1)
+        bias = self.bias - current_mean.reshape(1, -1) * scale
+        scale = scale.unsqueeze(-1).unsqueeze(-1)
+        bias = bias.unsqueeze(-1).unsqueeze(-1)
+        return x * scale + bias
+
+
 class OnlineMeanVarBatchNorm2d(nn.Module):
     __constants__ = ['num_features', 'momentum']
     def __init__(self, num_features, eps, momentum=0.1):
@@ -266,14 +288,20 @@ NORM_LAYERS.register_module('IN1d', module=nn.InstanceNorm1d)
 NORM_LAYERS.register_module('IN2d', module=nn.InstanceNorm2d)
 NORM_LAYERS.register_module('IN3d', module=nn.InstanceNorm3d)
 
+NORM_LAYERS.register_module('sasBN', module=SampleAwareStaticBatchNorm2d)
+NORM_LAYERS.register_module('saoBN', module=SampleAwareOnlineBatchNorm2d)
 NORM_LAYERS.register_module('cmvBN', module=CurrentMeanVarBatchNorm2d)
 NORM_LAYERS.register_module('fmvBN', module=FreezedMeanVarBatchNorm2d)
 NORM_LAYERS.register_module('omvBN', module=OnlineMeanVarBatchNorm2d)
 NORM_LAYERS.register_module('rmvBN', module=ResetMeanVarBatchNorm2d)
+NORM_LAYERS.register_module('tcmvBN', module=TargetCurrentMeanVarBatchNorm2d)
+NORM_LAYERS.register_module('tfmvBN', module=TargetFreezedMeanVarBatchNorm2d)
 NORM_LAYERS.register_module('cmvBN2d', module=CurrentMeanVarBatchNorm2d)
 NORM_LAYERS.register_module('fmvBN2d', module=FreezedMeanVarBatchNorm2d)
 NORM_LAYERS.register_module('omvBN2d', module=OnlineMeanVarBatchNorm2d)
 NORM_LAYERS.register_module('rmvBN2d', module=ResetMeanVarBatchNorm2d)
+NORM_LAYERS.register_module('tcmvBN2d', module=TargetCurrentMeanVarBatchNorm2d)
+NORM_LAYERS.register_module('tfmvBN2d', module=TargetFreezedMeanVarBatchNorm2d)
 
 def infer_abbr(class_type):
     """Infer abbreviation from the class name.
