@@ -10,7 +10,7 @@ from .io import imfrombytes, imread, imwrite, supported_backends, use_backend
 from .misc import tensor2imgs
 from .photometric import (adjust_brightness, adjust_color, adjust_contrast,
                           adjust_lighting, adjust_sharpness, auto_contrast,
-                          clahe, imdenormalize, imequalize, iminvert,
+                          clahe, gaussian_blur, imdenormalize, imequalize, iminvert,
                           imnormalize, imnormalize_, lut_transform, posterize,
                           solarize)
 
@@ -24,5 +24,6 @@ __all__ = [
     'solarize', 'rgb2ycbcr', 'bgr2ycbcr', 'ycbcr2rgb', 'ycbcr2bgr',
     'tensor2imgs', 'imshear', 'imtranslate', 'adjust_color', 'imequalize',
     'adjust_brightness', 'adjust_contrast', 'lut_transform', 'clahe',
-    'adjust_sharpness', 'auto_contrast', 'cutout', 'adjust_lighting'
+    'adjust_sharpness', 'auto_contrast', 'cutout', 'adjust_lighting',
+    'gaussian_blur'
 ]

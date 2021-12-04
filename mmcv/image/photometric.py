@@ -202,6 +202,26 @@ def adjust_brightness(img, factor=1.):
     return brightened_img.astype(img.dtype)
 
 
+def gaussian_blur(img, kernel, sigma):
+    '''
+        kernel: 0.1 of width and height
+    '''
+    if isinstance(kernel, float):
+        w, h = img.shape[:2]
+        kw, kh = int(kernel * w), int(kernel * h)
+        kw += 1 if kw % 2 == 0 else 0
+        kh += 1 if kh % 2 == 0 else 0
+        kernel = (kw, kh)
+    img = cv2.GaussianBlur(img, kernel, sigma)
+    if not colored_img.dtype == np.uint8:
+        # Note when the dtype of `img` is not the default `np.uint8`
+        # (e.g. np.float32), the value in `colored_img` got from cv2
+        # is not guaranteed to be in range [0, 255], so here clip
+        # is needed.
+        img = np.clip(img, 0, 255)
+    return img
+
+
 def adjust_contrast(img, factor=1.):
     """Adjust image contrast.
 
