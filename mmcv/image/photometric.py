@@ -213,7 +213,7 @@ def gaussian_blur(img, kernel, sigma):
         kh += 1 if kh % 2 == 0 else 0
         kernel = (kw, kh)
     img = cv2.GaussianBlur(img, kernel, sigma)
-    if not colored_img.dtype == np.uint8:
+    if not img.dtype == np.uint8:
         # Note when the dtype of `img` is not the default `np.uint8`
         # (e.g. np.float32), the value in `colored_img` got from cv2
         # is not guaranteed to be in range [0, 255], so here clip
