@@ -2,6 +2,7 @@ from torch.autograd import Function
 import torch
 from torch.nn.modules.utils import _pair
 import torch.nn as nn
+from torch.cuda.amp import autocast
 
 from collections import namedtuple
 import cupy
@@ -279,8 +280,40 @@ class involution(nn.Module):
             self.avgpool = nn.AvgPool2d(stride, stride)
 
     def forward(self, x):
+      with autocast(enabled=False):
+        x = cast_tensor_type(x, torch.half, torch.float)
         weight = self.conv2(self.conv1(x if self.stride == 1 else self.avgpool(x)))
         b, c, h, w = weight.shape
         weight = weight.view(b, self.groups, self.kernel_size, self.kernel_size, h, w)
         out = _involution_cuda(x, weight, stride=self.stride, padding=(self.kernel_size-1)//2)
+        out = cast_tensor_type(out, torch.float, torch.half)
         return out
+
+
+def cast_tensor_type(inputs, src_type, dst_type):
+    """Recursively convert Tensor in inputs from src_type to dst_type.
+
+    Args:
+        inputs: Inputs that to be casted.
+        src_type (torch.dtype): Source type..
+        dst_type (torch.dtype): Destination type.
+
+    Returns:
+        The same type with inputs, but all contained Tensors have been cast.
+    """
+    if isinstance(inputs, nn.Module):
+        return inputs
+    elif isinstance(inputs, torch.Tensor):
+        return inputs.to(dst_type)
+    elif isinstance(inputs, str):
+        return inputs
+    elif isinstance(inputs, abc.Mapping):
+        return type(inputs)({
+            k: cast_tensor_type(v, src_type, dst_type)
+            for k, v in inputs.items()
+        })
+    elif isinstance(inputs, abc.Iterable):
+        return type(inputs)(
+            cast_tensor_type(item, src_type, dst_type) for item in inputs)
+    else:
+        return inputs
