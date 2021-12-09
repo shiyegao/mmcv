@@ -276,6 +276,68 @@ class TargetFreezedMeanVarBatchNorm2d(nn.Module):
         return x * scale + bias
 
 
+class DUABatchNorm2d(nn.Module):
+    ''' See https://arxiv.org/abs/2112.00463 '''
+
+    __constants__ = ['num_features']
+    
+    def __init__(self, num_features, eps):
+        super().__init__()
+        assert eps == 1e-5
+        self.num_features = num_features
+        self.weight = nn.Parameter(torch.ones(num_features))
+        self.bias = nn.Parameter(torch.zeros(num_features))
+        self.register_buffer("running_mean", torch.zeros(num_features))
+        self.register_buffer("running_var", torch.ones(num_features) - 1e-5)
+
+        # Dynamic Unsupervised Adaptation
+        self.rho = 0.1
+        self.omega = 0.94
+        self.zeta = 0.005
+
+    def extra_repr(self):
+        return '{}, eps=1e-5, affine=True, requires_grad={}'.format(
+            self.num_features, self.weight.requires_grad)
+
+    def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict,
+                              missing_keys, unexpected_keys, error_msgs):
+
+        model_device = self.weight.device
+        param_requires_grad = self.weight.requires_grad
+        self.weight = nn.Parameter(torch.ones(self.num_features).to(model_device))
+        self.bias = nn.Parameter(torch.zeros(self.num_features).to(model_device))
+
+        super()._load_from_state_dict(
+            state_dict, prefix, local_metadata, False, #strict,
+            missing_keys, unexpected_keys, error_msgs)
+        
+        self.weight.requires_grad = param_requires_grad
+        self.bias.requires_grad = param_requires_grad
+        self.register_buffer("ckpt_weight", self.weight)
+        self.register_buffer("ckpt_bias", self.bias)
+        
+    def forward(self, x):
+        current_mean = x.mean([0, 2, 3])
+        current_var = x.var([0, 2, 3], unbiased=False)
+
+        # Dynamic Unsupervised Adaptation
+        momentum = self.rho + self.zeta
+        self.running_mean = (1 - momentum) * self.running_mean + momentum * current_mean
+        self.running_var = (1 - momentum) * self.running_var + momentum * current_var
+        self.rho *= self.omega
+        if self.weight.dim() == 1: # batch
+            scale = self.weight * (self.running_var + 1e-5).rsqrt()
+            bias = self.bias - self.running_mean * scale
+            scale = scale.reshape(1, -1, 1, 1)
+            bias = bias.reshape(1, -1, 1, 1)
+        else: # sample
+            scale = self.weight * (self.running_var + 1e-5).rsqrt().reshape(1, -1)
+            bias = self.bias - self.running_mean.reshape(1, -1) * scale
+            scale = scale.unsqueeze(-1).unsqueeze(-1)
+            bias = bias.unsqueeze(-1).unsqueeze(-1)
+        return x * scale + bias
+
+
 NORM_LAYERS.register_module('BN', module=nn.BatchNorm2d)
 NORM_LAYERS.register_module('BN1d', module=nn.BatchNorm1d)
 NORM_LAYERS.register_module('BN2d', module=nn.BatchNorm2d)
@@ -302,6 +364,7 @@ NORM_LAYERS.register_module('omvBN2d', module=OnlineMeanVarBatchNorm2d)
 NORM_LAYERS.register_module('rmvBN2d', module=ResetMeanVarBatchNorm2d)
 NORM_LAYERS.register_module('tcmvBN2d', module=TargetCurrentMeanVarBatchNorm2d)
 NORM_LAYERS.register_module('tfmvBN2d', module=TargetFreezedMeanVarBatchNorm2d)
+NORM_LAYERS.register_module('duaBN', module=DUABatchNorm2d)
 
 def infer_abbr(class_type):
     """Infer abbreviation from the class name.
