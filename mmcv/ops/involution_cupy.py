@@ -279,14 +279,18 @@ class involution(nn.Module):
         if stride > 1:
             self.avgpool = nn.AvgPool2d(stride, stride)
 
-    def forward(self, x):
+    def forward(self, x_in):
       with autocast(enabled=False):
-        x = cast_tensor_type(x, torch.half, torch.float)
+        if x_in.dtype==torch.half:
+          x = cast_tensor_type(x_in, torch.half, torch.float)
+        else:
+          x = x_in
         weight = self.conv2(self.conv1(x if self.stride == 1 else self.avgpool(x)))
         b, c, h, w = weight.shape
         weight = weight.view(b, self.groups, self.kernel_size, self.kernel_size, h, w)
         out = _involution_cuda(x, weight, stride=self.stride, padding=(self.kernel_size-1)//2)
-        out = cast_tensor_type(out, torch.float, torch.half)
+        if x_in.dtype==torch.half:
+          out = cast_tensor_type(out, torch.float, torch.half)
         return out
 
 
