@@ -61,14 +61,12 @@ class OnlineMeanVarBatchNorm2d(nn.Module):
             state_dict, prefix, local_metadata, False,  #strict,
             missing_keys, unexpected_keys, error_msgs)
 
-
     def forward(self, x):
         current_mean = x.mean([0, 2, 3])
         current_var = x.var([0, 2, 3], unbiased=False)
 
         scale = self.weight * ((1 - self.momentum) * self.running_var + current_var * self.momentum + 1e-5).rsqrt()
-        bias = self.bias - ((1 - self.momentum
-        ) * self.running_mean + current_mean * self.momentum) * scale
+        bias = self.bias - ((1 - self.momentum) * self.running_mean + current_mean * self.momentum) * scale
         scale = scale.reshape(1, -1, 1, 1)
         bias = bias.reshape(1, -1, 1, 1)
 
@@ -136,8 +134,6 @@ class FreezedMeanVarBatchNorm2d(nn.Module):
         self.bias = nn.Parameter(torch.zeros(num_features))
         self.register_buffer("running_mean", torch.zeros(num_features))
         self.register_buffer("running_var", torch.ones(num_features) - 1e-5)
-        # self.running_mean = torch.zeros(num_features)
-        # self.running_var = torch.ones(num_features) - 1e-5
 
     def extra_repr(self):
         return '{num_features}, eps=1e-5, affine=True'.format(**self.__dict__)
@@ -146,10 +142,7 @@ class FreezedMeanVarBatchNorm2d(nn.Module):
     def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict,
                               missing_keys, unexpected_keys, error_msgs):
 
-        model_device = self.weight.device
         param_requires_grad = self.weight.requires_grad
-        self.weight = nn.Parameter(torch.ones(self.num_features).to(model_device))
-        self.bias = nn.Parameter(torch.zeros(self.num_features).to(model_device))
 
         super()._load_from_state_dict(
             state_dict, prefix, local_metadata, False, #strict,

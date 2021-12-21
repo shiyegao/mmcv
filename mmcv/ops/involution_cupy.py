@@ -2,7 +2,7 @@ from torch.autograd import Function
 import torch
 from torch.nn.modules.utils import _pair
 import torch.nn as nn
-from torch.cuda.amp import autocast
+from torch.cuda.amp import autocast, custom_fwd, custom_bwd
 
 from collections import namedtuple
 import cupy
@@ -150,6 +150,7 @@ __global__ void involution_backward_grad_weight_kernel(
 
 class _involution(Function):
     @staticmethod
+    # @custom_fwd(cast_inputs=torch.float)
     def forward(ctx, input, weight, stride, padding, dilation):
         assert input.dim() == 4 and input.is_cuda
         assert weight.dim() == 6 and weight.is_cuda
@@ -180,6 +181,7 @@ class _involution(Function):
         return output
     
     @staticmethod
+    # @custom_bwd
     def backward(ctx, grad_output):
         assert grad_output.is_cuda and grad_output.is_contiguous()
         input, weight = ctx.saved_tensors
@@ -226,7 +228,6 @@ class _involution(Function):
                   grid=(GET_BLOCKS(n),1,1),
                   args=[grad_output.data_ptr(), input.data_ptr(), grad_weight.data_ptr()],
                   stream=Stream(ptr=torch.cuda.current_stream().cuda_stream))
-
         return grad_input, grad_weight, None, None, None
  
 
@@ -278,6 +279,13 @@ class involution(nn.Module):
             act_cfg=None)
         if stride > 1:
             self.avgpool = nn.AvgPool2d(stride, stride)
+
+    # def forward(self, x):
+    #   weight = self.conv2(self.conv1(x if self.stride == 1 else self.avgpool(x)))
+    #   b, c, h, w = weight.shape
+    #   weight = weight.view(b, self.groups, self.kernel_size, self.kernel_size, h, w)
+    #   out = _involution_cuda(x, weight, stride=self.stride, padding=(self.kernel_size-1)//2)
+    #   return out
 
     def forward(self, x_in):
       with autocast(enabled=False):
