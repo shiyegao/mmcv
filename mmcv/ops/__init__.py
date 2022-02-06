@@ -19,6 +19,7 @@ from .info import (get_compiler_version, get_compiling_cuda_version,
                    get_onnxruntime_op_path)
 # from .involution import Involution2d
 from .involution_cupy import involution
+from .likelihood_ratio import soft_likelihood_ratio, hard_likelihood_ratio
 from .masked_conv import MaskedConv2d, masked_conv2d
 from .modulated_deform_conv import (ModulatedDeformConv2d,
                                     ModulatedDeformConv2dPack,
@@ -56,5 +57,6 @@ __all__ = [
     'upfirdn2d', 'FusedBiasLeakyReLU', 'fused_bias_leakyrelu',
     'RoIAlignRotated', 'roi_align_rotated', 'pixel_group', 'contour_expand',
     'MultiScaleDeformableAttention', 'BorderAlign', 'border_align',
-    'softmax_entropy', 'SoftmaxEntropy',  'info_max', 'InfoMax'
+    'softmax_entropy', 'SoftmaxEntropy',  'info_max', 'InfoMax',
+    'soft_likelihood_ratio', 'hard_likelihood_ratio',
 ]

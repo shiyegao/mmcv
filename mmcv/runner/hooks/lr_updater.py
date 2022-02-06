@@ -27,7 +27,8 @@ class LrUpdaterHook(Hook):
                  warmup=None,
                  warmup_iters=0,
                  warmup_ratio=0.1,
-                 warmup_by_epoch=False):
+                 warmup_by_epoch=False,
+                 epoch_by_iter=False):
         # validate the "warmup" argument
         if warmup is not None:
             if warmup not in ['constant', 'linear', 'exp']:
@@ -45,6 +46,7 @@ class LrUpdaterHook(Hook):
         self.warmup_iters = warmup_iters
         self.warmup_ratio = warmup_ratio
         self.warmup_by_epoch = warmup_by_epoch
+        self.epoch_by_iter = epoch_by_iter
 
         if self.warmup_by_epoch:
             self.warmup_epochs = self.warmup_iters
@@ -119,6 +121,7 @@ class LrUpdaterHook(Hook):
         else:
             for group in runner.optimizer.param_groups:
                 group.setdefault('initial_lr', group['lr'])
+                print(group['lr'])
             self.base_lr = [
                 group['initial_lr'] for group in runner.optimizer.param_groups
             ]
@@ -128,7 +131,7 @@ class LrUpdaterHook(Hook):
             epoch_len = len(runner.data_loader)
             self.warmup_iters = self.warmup_epochs * epoch_len
 
-        if not self.by_epoch:
+        if not self.by_epoch or self.epoch_by_iter:
             return
 
         self.regular_lr = self.get_regular_lr(runner)
@@ -136,7 +139,7 @@ class LrUpdaterHook(Hook):
 
     def before_train_iter(self, runner):
         cur_iter = runner.iter
-        if not self.by_epoch:
+        if not self.by_epoch or self.epoch_by_iter:
             self.regular_lr = self.get_regular_lr(runner)
             if self.warmup is None or cur_iter >= self.warmup_iters:
                 self._set_lr(runner, self.regular_lr)
@@ -257,16 +260,21 @@ class InvLrUpdaterHook(LrUpdaterHook):
 @HOOKS.register_module()
 class CosineAnnealingLrUpdaterHook(LrUpdaterHook):
 
-    def __init__(self, min_lr=None, min_lr_ratio=None, **kwargs):
+    def __init__(self, min_lr=None, min_lr_ratio=None, epoch_by_iter=False, **kwargs):
         assert (min_lr is None) ^ (min_lr_ratio is None)
         self.min_lr = min_lr
         self.min_lr_ratio = min_lr_ratio
-        super(CosineAnnealingLrUpdaterHook, self).__init__(**kwargs)
+        self.epoch_by_iter = epoch_by_iter
+        super(CosineAnnealingLrUpdaterHook, self).__init__(epoch_by_iter=epoch_by_iter, **kwargs)
 
     def get_lr(self, runner, base_lr):
         if self.by_epoch:
-            progress = runner.epoch
-            max_progress = runner.max_epochs
+            if self.epoch_by_iter:
+                progress = runner._inner_iter
+                max_progress = runner._max_iters
+            else:
+                progress = runner.epoch
+                max_progress = runner.max_epochs
         else:
             progress = runner.iter
             max_progress = runner.max_iters
